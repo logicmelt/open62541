@@ -118,6 +118,8 @@ detectValueChange(UA_Server *server, UA_MonitoredItem *mon,
             return true;
     }
 
+    return true;
+
     /* Has the value changed? */
     if(value->hasValue != mon->lastValue.hasValue)
         return true;
