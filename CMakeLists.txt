@@ -44,12 +44,13 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(OPEN62541_VER_MAJOR 1)
 set(OPEN62541_VER_MINOR 3)
 set(OPEN62541_VER_PATCH 6)
-set(OPEN62541_VER_LABEL "-undefined") # like "-rc1" or "-g4538abcd" or "-g4538abcd-dirty"
+set(OPEN62541_VER_LABEL "-logicmelt1") # like "-rc1" or "-g4538abcd" or "-g4538abcd-dirty"
 set(OPEN62541_VER_COMMIT "unknown-commit")
 
 # Overwrite the version information based on git if available
-include(SetGitBasedVersion)
-set_open62541_version()
+#comment to force logicmelt label
+#include(SetGitBasedVersion)
+#set_open62541_version()
 
 # Examples for the version string are:
 # v1.2
