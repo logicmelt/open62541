@@ -1630,6 +1630,9 @@ if(UA_ENABLE_DISCOVERY_MULTICAST)
     list(APPEND open62541_enabled_components "DiscoveryMulticast")
 endif()
 
+# Append a component for Logicmelt optimization to work with big arrays in subscription
+list(APPEND open62541_enabled_components "LogicmeltOptimizedSubscription")
+
 # export library (either static or shared depending on BUILD_SHARED_LIBS)
 if(UA_PACK_DEBIAN)
     set(EXTRATARGETS "open62541-static")
