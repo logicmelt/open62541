@@ -44,7 +44,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(OPEN62541_VER_MAJOR 1)
 set(OPEN62541_VER_MINOR 3)
 set(OPEN62541_VER_PATCH 6)
-set(OPEN62541_VER_LABEL "-logicmelt1") # like "-rc1" or "-g4538abcd" or "-g4538abcd-dirty"
+set(OPEN62541_VER_LABEL "-logicmelt2") # like "-rc1" or "-g4538abcd" or "-g4538abcd-dirty"
 set(OPEN62541_VER_COMMIT "unknown-commit")
 
 # Overwrite the version information based on git if available
@@ -1631,7 +1631,7 @@ if(UA_ENABLE_DISCOVERY_MULTICAST)
 endif()
 
 # Append a component for Logicmelt optimization to work with big arrays in subscription
-list(APPEND open62541_enabled_components "LogicmeltOptimizedSubscription")
+list(APPEND open62541_enabled_components "LogicmeltOptimizedSubscription2")
 
 # export library (either static or shared depending on BUILD_SHARED_LIBS)
 if(UA_PACK_DEBIAN)
