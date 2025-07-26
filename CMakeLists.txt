@@ -1481,7 +1481,7 @@ if(UA_ENABLE_AMALGAMATION)
 endif()
 
 # Append a component for Logicmelt optimization to work with big arrays in subscription
-list(APPEND open62541_enabled_components "LogicmeltOptimizedSubscription2")
+list(APPEND open62541_enabled_components "LogicmeltOptimizedSubscription")
 
 # export library (either static or shared depending on BUILD_SHARED_LIBS)
 install(TARGETS open62541
