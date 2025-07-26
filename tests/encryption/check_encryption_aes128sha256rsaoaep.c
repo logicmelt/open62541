@@ -28,7 +28,6 @@
 
 UA_Server *server;
 UA_Boolean running;
-UA_ServerNetworkLayer nl;
 THREAD_HANDLE server_thread;
 
 THREAD_CALLBACK(serverloop) {
@@ -65,18 +64,20 @@ static void setup(void) {
         trustList[i] = loadFile(argv[i+3]);
     */
 
-    /* Loading of a revocation list currently unsupported */
+    /* Revocation lists are supported, but not used here */
     UA_ByteString *revocationList = NULL;
     size_t revocationListSize = 0;
 
     server = UA_Server_new();
+    ck_assert(server != NULL);
     UA_ServerConfig *config = UA_Server_getConfig(server);
     UA_ServerConfig_setDefaultWithSecurityPolicies(config, 4840, &certificate, &privateKey,
                                                    trustList, trustListSize,
                                                    issuerList, issuerListSize,
                                                    revocationList, revocationListSize);
-    config->certificateVerification.clear(&config->certificateVerification);
-    UA_CertificateVerification_AcceptAll(&config->certificateVerification);
+
+    UA_CertificateVerification_AcceptAll(&config->secureChannelPKI);
+    UA_CertificateVerification_AcceptAll(&config->sessionPKI);
 
     /* Set the ApplicationUri used in the certificate */
     UA_String_clear(&config->applicationDescription.applicationUri);
@@ -131,7 +132,7 @@ START_TEST(encryption_connect) {
     UA_Array_delete(endpointArray, endpointArraySize,
                     &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION]);
 
-    /* TODO test trustList Load revocationList is not supported now
+    /* Revocation lists are supported, but not used here
     if(argc > MIN_ARGS) {
         trustListSize = (size_t)argc-MIN_ARGS;
         retval = UA_ByteString_allocBuffer(trustList, trustListSize);
@@ -214,7 +215,7 @@ START_TEST(encryption_connect_pem) {
     UA_Array_delete(endpointArray, endpointArraySize,
                     &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION]);
 
-    /* TODO test trustList Load revocationList is not supported now
+    /* Revocation lists are supported, but not used here
     if(argc > MIN_ARGS) {
         trustListSize = (size_t)argc-MIN_ARGS;
         retval = UA_ByteString_allocBuffer(trustList, trustListSize);

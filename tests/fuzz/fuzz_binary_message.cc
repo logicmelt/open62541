@@ -5,18 +5,21 @@
  *    Copyright 2019 (c) fortiss (Author: Stefan Profanter)
  */
 
-
-#include "custom_memory_manager.h"
-
 #include <open62541/plugin/log_stdout.h>
 #include <open62541/server_config_default.h>
 #include <open62541/types.h>
 
 #include "ua_server_internal.h"
-
 #include "testing_networklayers.h"
 
 #define RECEIVE_BUFFER_SIZE 65535
+
+static void *
+_removeServerComponent(void *application, UA_ServerComponent *sc) {
+    UA_assert(sc->state == UA_LIFECYCLESTATE_STOPPED);
+    sc->free((UA_Server*)application, sc);
+    return NULL;
+}
 
 /*
 ** Main entry point.  The fuzzer invokes this function with each
@@ -26,12 +29,6 @@ extern "C" int
 LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if(size <= 4)
         return 0;
-
-    if(!UA_memoryManager_setLimitFromLast4Bytes(data, size))
-        return 0;
-    size -= 4;
-
-    UA_Connection c = createDummyConnection(RECEIVE_BUFFER_SIZE, NULL);
 
     /* less debug output */
     UA_ServerConfig initialConfig;
@@ -63,11 +60,21 @@ LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     }
     memcpy(msg.data, data, size);
 
-    UA_Server_processBinaryMessage(server, &c, &msg);
+    /* Remove all remaining server components (must be all stopped) */
+    ZIP_ITER(UA_ServerComponentTree, &server->serverComponents,
+             _removeServerComponent, server);
+    ZIP_INIT(&server->serverComponents);
+
+    UA_ServerComponent *bpm = UA_BinaryProtocolManager_new(server);
+    addServerComponent(server, bpm, NULL);
+
+    void *ctx = NULL;
+    serverNetworkCallback(&testConnectionManagerTCP, 0, bpm,
+                          &ctx, UA_CONNECTIONSTATE_ESTABLISHED,
+                          &UA_KEYVALUEMAP_NULL, msg);
+
     // if we got an invalid chunk, the message is not deleted, so delete it here
     UA_ByteString_clear(&msg);
-    UA_Server_run_shutdown(server);
     UA_Server_delete(server);
-    c.close(&c);
     return 0;
 }

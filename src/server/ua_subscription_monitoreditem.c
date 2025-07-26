@@ -1,6 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  *    Copyright 2017-2018 (c) Fraunhofer IOSB (Author: Julius Pfrommer)
  *    Copyright 2017 (c) Stefan Profanter, fortiss GmbH
@@ -192,7 +192,6 @@ UA_Notification_delete(UA_Notification *n) {
 #ifdef UA_ENABLE_SUBSCRIPTIONS_EVENTS
         case UA_ATTRIBUTEID_EVENTNOTIFIER:
             UA_EventFieldList_clear(&n->data.event);
-            UA_EventFilterResult_clear(&n->result);
             break;
 #endif
         default:
@@ -227,7 +226,7 @@ UA_Notification_enqueueMon(UA_Server *server, UA_Notification *n) {
      * adding the new Notification. */
     UA_MonitoredItem_ensureQueueSpace(server, mon);
 
-    UA_LOG_DEBUG_SUBSCRIPTION(&server->config.logger, mon->subscription,
+    UA_LOG_DEBUG_SUBSCRIPTION(server->config.logging, mon->subscription,
                               "MonitoredItem %" PRIi32 " | "
                               "Notification enqueued (Queue size %lu / %lu)",
                               mon->monitoredItemId,
@@ -235,7 +234,7 @@ UA_Notification_enqueueMon(UA_Server *server, UA_Notification *n) {
                               (long unsigned)mon->parameters.queueSize);
 }
 
-void
+static void
 UA_Notification_enqueueSub(UA_Notification *n) {
     UA_MonitoredItem *mon = n->mon;
     UA_assert(mon);
@@ -277,9 +276,9 @@ UA_Notification_enqueueAndTrigger(UA_Server *server, UA_Notification *n) {
         mon->triggeredUntil > UA_DateTime_nowMonotonic())) {
         UA_Notification_enqueueSub(n);
         mon->triggeredUntil = UA_INT64_MIN;
-        UA_LOG_DEBUG_SUBSCRIPTION(&server->config.logger, mon->subscription,
+        UA_LOG_DEBUG_SUBSCRIPTION(server->config.logging, sub,
                                   "Notification enqueued (Queue size %lu)",
-                                  (long unsigned)mon->subscription->notificationQueueSize);
+                                  (long unsigned)sub->notificationQueueSize);
     }
 
     /* Insert into the MonitoredItem. This checks the queue size and
@@ -314,7 +313,7 @@ UA_Notification_enqueueAndTrigger(UA_Server *server, UA_Notification *n) {
         triggeredMon->triggeredUntil = UA_DateTime_nowMonotonic() +
             (UA_DateTime)(sub->publishingInterval * (UA_Double)UA_DATETIME_MSEC);
 
-        UA_LOG_DEBUG_SUBSCRIPTION(&server->config.logger, sub,
+        UA_LOG_DEBUG_SUBSCRIPTION(server->config.logging, sub,
                                   "MonitoredItem %u triggers MonitoredItem %u",
                                   mon->monitoredItemId, triggeredMon->monitoredItemId);
     }
@@ -422,6 +421,8 @@ removeMonitoredItemBackPointer(UA_Server *server, UA_Session *session,
 
 void
 UA_Server_registerMonitoredItem(UA_Server *server, UA_MonitoredItem *mon) {
+    UA_LOCK_ASSERT(&server->serviceMutex, 1);
+
     if(mon->registered)
         return;
 
@@ -429,7 +430,6 @@ UA_Server_registerMonitoredItem(UA_Server *server, UA_MonitoredItem *mon) {
     UA_Subscription *sub = mon->subscription;
     if(sub) {
         mon->monitoredItemId = ++sub->lastMonitoredItemId;
-        mon->subscription = sub;
         sub->monitoredItemsSize++;
         LIST_INSERT_HEAD(&sub->monitoredItems, mon, listEntry);
     } else {
@@ -446,14 +446,12 @@ UA_Server_registerMonitoredItem(UA_Server *server, UA_MonitoredItem *mon) {
 
         void *targetContext = NULL;
         getNodeContext(server, mon->itemToMonitor.nodeId, &targetContext);
-        UA_UNLOCK(&server->serviceMutex);
         server->config.monitoredItemRegisterCallback(server,
                                                      session ? &session->sessionId : NULL,
                                                      session ? session->sessionHandle : NULL,
                                                      &mon->itemToMonitor.nodeId,
                                                      targetContext,
                                                      mon->itemToMonitor.attributeId, false);
-        UA_LOCK(&server->serviceMutex);
     }
 
     mon->registered = true;
@@ -461,11 +459,13 @@ UA_Server_registerMonitoredItem(UA_Server *server, UA_MonitoredItem *mon) {
 
 static void
 UA_Server_unregisterMonitoredItem(UA_Server *server, UA_MonitoredItem *mon) {
+    UA_LOCK_ASSERT(&server->serviceMutex, 1);
+
     if(!mon->registered)
         return;
 
     UA_Subscription *sub = mon->subscription;
-    UA_LOG_INFO_SUBSCRIPTION(&server->config.logger, sub,
+    UA_LOG_INFO_SUBSCRIPTION(server->config.logging, sub,
                              "MonitoredItem %" PRIi32 " | Deleting the MonitoredItem",
                              mon->monitoredItemId);
 
@@ -477,14 +477,12 @@ UA_Server_unregisterMonitoredItem(UA_Server *server, UA_MonitoredItem *mon) {
 
         void *targetContext = NULL;
         getNodeContext(server, mon->itemToMonitor.nodeId, &targetContext);
-        UA_UNLOCK(&server->serviceMutex);
         server->config.monitoredItemRegisterCallback(server,
                                                      session ? &session->sessionId : NULL,
                                                      session ? session->sessionHandle : NULL,
                                                      &mon->itemToMonitor.nodeId,
                                                      targetContext,
                                                      mon->itemToMonitor.attributeId, true);
-        UA_LOCK(&server->serviceMutex);
     }
 
     /* Deregister in Subscription and server */
@@ -559,6 +557,11 @@ UA_MonitoredItem_setMonitoringMode(UA_Server *server, UA_MonitoredItem *mon,
     return UA_STATUSCODE_GOOD;
 }
 
+static void
+delayedFreeMonitoredItem(void *app, void *context) {
+    UA_free(context);
+}
+
 void
 UA_MonitoredItem_delete(UA_Server *server, UA_MonitoredItem *mon) {
     UA_LOCK_ASSERT(&server->serviceMutex, 1);
@@ -593,12 +596,11 @@ UA_MonitoredItem_delete(UA_Server *server, UA_MonitoredItem *mon) {
     /* Add a delayed callback to remove the MonitoredItem when the current jobs
      * have completed. This is needed to allow that a local MonitoredItem can
      * remove itself in the callback. */
-    mon->delayedFreePointers.callback = NULL;
-    mon->delayedFreePointers.application = server;
-    mon->delayedFreePointers.data = NULL;
-    mon->delayedFreePointers.nextTime = UA_DateTime_nowMonotonic() + 1;
-    mon->delayedFreePointers.interval = 0;
-    UA_Timer_addTimerEntry(&server->timer, &mon->delayedFreePointers, NULL);
+    mon->delayedFreePointers.callback = delayedFreeMonitoredItem;
+    mon->delayedFreePointers.application = NULL;
+    mon->delayedFreePointers.context = mon;
+    UA_EventLoop *el = server->config.eventLoop;
+    el->addDelayedCallback(el, &mon->delayedFreePointers);
 }
 
 void
@@ -615,7 +617,7 @@ UA_MonitoredItem_ensureQueueSpace(UA_Server *server, UA_MonitoredItem *mon) {
     /* Nothing to do */
     if(mon->queueSize - mon->eventOverflows <= mon->parameters.queueSize)
         return;
-    
+
     /* Remove notifications until the required queue size is reached */
     UA_Boolean reporting = false;
     size_t remove = mon->queueSize - mon->eventOverflows - mon->parameters.queueSize;
@@ -719,11 +721,10 @@ UA_MonitoredItem_registerSampling(UA_Server *server, UA_MonitoredItem *mon) {
         if(res == UA_STATUSCODE_GOOD)
             mon->samplingType = UA_MONITOREDITEMSAMPLINGTYPE_EVENT;
         return res;
-    } else if(mon->parameters.samplingInterval < 0.0) {
+    } else if(sub && mon->parameters.samplingInterval == sub->publishingInterval) {
         /* Add to the subscription for sampling before every publish */
-        if(!sub)
-            return UA_STATUSCODE_BADINTERNALERROR; /* Not possible for local MonitoredItems */
-        LIST_INSERT_HEAD(&sub->samplingMonitoredItems, mon, sampling.samplingListEntry);
+        LIST_INSERT_HEAD(&sub->samplingMonitoredItems, mon,
+                         sampling.subscriptionSampling);
         mon->samplingType = UA_MONITOREDITEMSAMPLINGTYPE_PUBLISH;
     } else {
         /* DataChange MonitoredItems with a positive sampling interval have a
@@ -763,7 +764,7 @@ UA_MonitoredItem_unregisterSampling(UA_Server *server, UA_MonitoredItem *mon) {
 
     case UA_MONITOREDITEMSAMPLINGTYPE_PUBLISH:
         /* Added to the subscription */
-        LIST_REMOVE(mon, sampling.samplingListEntry);
+        LIST_REMOVE(mon, sampling.subscriptionSampling);
         break;
 
     case UA_MONITOREDITEMSAMPLINGTYPE_NONE:

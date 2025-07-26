@@ -77,13 +77,16 @@ Makefile
 /exampleClient
 /exampleClient_legacy
 /src_generated/
-/build
-/.idea
+**/build
 /cmake-build*
 /tools/certs/certs/*
 Pipfile
 Pipfile.lock
 .vscode
+/.vs
+**/libxml2
+debian/*
+/CMakeSettings.json
 
 # clangd cache
 .cache/

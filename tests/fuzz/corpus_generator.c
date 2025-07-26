@@ -55,7 +55,7 @@ static void start_server(void) {
     UA_ServerConfig *config = UA_Server_getConfig(server);
     config->applicationDescription.applicationType = UA_APPLICATIONTYPE_SERVER;
     config->mdnsEnabled = true;
-    config->mdnsConfig.mdnsServerName = UA_String_fromChars("Sample Multicast Server");
+    config->mdnsConfig.mdnsServerName = UA_String_fromChars("Sample-Multicast-Server");
 
     UA_Server_run_startup(server);
     pthread_create(&server_thread, NULL, serverloop, NULL);
@@ -152,14 +152,12 @@ initUaRegisterServer(UA_RegisteredServer *requestServer) {
     requestServer->serverNames = &server->config.applicationDescription.applicationName;
     requestServer->serverNamesSize = 1;
 
-    size_t nl_discurls = server->config.networkLayersSize;
+    size_t nl_discurls = server->config.serverUrlsSize;
     requestServer->discoveryUrls = (UA_String*)UA_malloc(sizeof(UA_String) * nl_discurls);
     requestServer->discoveryUrlsSize = nl_discurls;
     for(size_t i = 0; i < nl_discurls; ++i) {
-        UA_ServerNetworkLayer *nl = &server->config.networkLayers[i];
-        requestServer->discoveryUrls[i] = nl->discoveryUrl;
+        requestServer->discoveryUrls[i] = server->config.serverUrls[i];
     }
-
 }
 
 static UA_StatusCode
@@ -410,7 +408,7 @@ subscriptionRequests(UA_Client *client) {
     ASSERT_GOOD(setPublishingModeResponse.responseHeader.serviceResult);
     UA_SetPublishingModeRequest_clear(&setPublishingModeRequest);
     UA_SetPublishingModeResponse_clear(&setPublishingModeResponse);
-    
+
 
     // createMonitoredItemsRequest
     UA_UInt32 monId;
@@ -429,9 +427,9 @@ subscriptionRequests(UA_Client *client) {
     UA_PublishRequest publishRequest;
     UA_PublishRequest_init(&publishRequest);
     ASSERT_GOOD(UA_Client_preparePublishRequest(client, &publishRequest));
-    UA_Client_sendAsyncRequest(client, &publishRequest,
-                               &UA_TYPES[UA_TYPES_PUBLISHREQUEST], NULL,
-                               &UA_TYPES[UA_TYPES_PUBLISHRESPONSE], NULL, NULL);
+    __UA_Client_AsyncService(client, &publishRequest,
+                             &UA_TYPES[UA_TYPES_PUBLISHREQUEST], NULL,
+                             &UA_TYPES[UA_TYPES_PUBLISHRESPONSE], NULL, NULL);
     // here we don't care about the return value since it may be UA_STATUSCODE_BADMESSAGENOTAVAILABLE
     // ASSERT_GOOD(publishResponse.responseHeader.serviceResult);
     UA_PublishRequest_clear(&publishRequest);
@@ -463,7 +461,7 @@ subscriptionRequests(UA_Client *client) {
     ASSERT_GOOD(modifyMonitoredItemsResponse.responseHeader.serviceResult);
     UA_ModifyMonitoredItemsRequest_clear(&modifyMonitoredItemsRequest);
     UA_ModifyMonitoredItemsResponse_clear(&modifyMonitoredItemsResponse);
-    
+
     // setMonitoringMode
     UA_SetMonitoringModeRequest setMonitoringModeRequest;
     UA_SetMonitoringModeRequest_init(&setMonitoringModeRequest);

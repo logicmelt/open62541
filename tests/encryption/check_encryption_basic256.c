@@ -10,6 +10,8 @@
 #include <open62541/client_config_default.h>
 #include <open62541/client_highlevel.h>
 #include <open62541/plugin/securitypolicy.h>
+#include <open62541/plugin/securitypolicy_default.h>
+#include <open62541/plugin/accesscontrol_default.h>
 #include <open62541/plugin/pki_default.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
@@ -28,7 +30,6 @@
 
 UA_Server *server;
 UA_Boolean running;
-UA_ServerNetworkLayer nl;
 THREAD_HANDLE server_thread;
 
 THREAD_CALLBACK(serverloop) {
@@ -65,18 +66,30 @@ static void setup(void) {
         trustList[i] = loadFile(argv[i+3]);
     */
 
-    /* Loading of a revocation list currently unsupported */
+    /* Revocation lists are supported, but not used here */
     UA_ByteString *revocationList = NULL;
     size_t revocationListSize = 0;
 
     server = UA_Server_new();
+    ck_assert(server != NULL);
     UA_ServerConfig *config = UA_Server_getConfig(server);
     UA_ServerConfig_setDefaultWithSecurityPolicies(config, 4840, &certificate, &privateKey,
                                                    trustList, trustListSize,
                                                    issuerList, issuerListSize,
                                                    revocationList, revocationListSize);
-    config->certificateVerification.clear(&config->certificateVerification);
-    UA_CertificateVerification_AcceptAll(&config->certificateVerification);
+
+    UA_CertificateVerification_AcceptAll(&config->secureChannelPKI);
+    UA_CertificateVerification_AcceptAll(&config->sessionPKI);
+
+    /* Manually add the Basic256 SecurityPolicy.
+     * It does not get added by default as it is considered unsecure. */
+    UA_ServerConfig_addSecurityPolicyBasic256(config, &certificate, &privateKey);
+    UA_ServerConfig_addAllEndpoints(config);
+
+    /* Manually redo the AccessControl.
+     * It takes the already defined SecurityPolicies for the valid UserIdentityTokens.
+     * Otherwise Basic256 will not work. */
+    UA_AccessControl_default(config, true, NULL, 0, NULL);
 
     /* Set the ApplicationUri used in the certificate */
     UA_String_clear(&config->applicationDescription.applicationUri);
@@ -131,7 +144,7 @@ START_TEST(encryption_connect) {
     UA_Array_delete(endpointArray, endpointArraySize,
                     &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION]);
 
-    /* TODO test trustList Load revocationList is not supported now
+    /* Revocation lists are supported, but not used here
     if(argc > MIN_ARGS) {
         trustListSize = (size_t)argc-MIN_ARGS;
         retval = UA_ByteString_allocBuffer(trustList, trustListSize);
@@ -156,6 +169,23 @@ START_TEST(encryption_connect) {
                                          revocationList, revocationListSize);
     cc->certificateVerification.clear(&cc->certificateVerification);
     UA_CertificateVerification_AcceptAll(&cc->certificateVerification);
+
+    /* Manually add the Basic256 SecurityPolicy.
+     * It does not get added by default as it is considered unsecure. */
+    cc->securityPolicies = (UA_SecurityPolicy *)
+        UA_realloc(cc->securityPolicies, sizeof(UA_SecurityPolicy) *
+                   (cc->securityPoliciesSize + 1));
+    UA_SecurityPolicy_Basic256(&cc->securityPolicies[cc->securityPoliciesSize],
+                               certificate, privateKey, cc->logging);
+    cc->securityPoliciesSize++;
+
+    cc->authSecurityPolicies = (UA_SecurityPolicy *)
+        UA_realloc(cc->authSecurityPolicies, sizeof(UA_SecurityPolicy) *
+                   (cc->authSecurityPoliciesSize + 1));
+    UA_SecurityPolicy_Basic256(&cc->authSecurityPolicies[cc->authSecurityPoliciesSize],
+                                    certificate, privateKey, cc->logging);
+    cc->authSecurityPoliciesSize++;
+
     cc->securityPolicyUri =
         UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256");
     ck_assert(client != NULL);
@@ -214,7 +244,7 @@ START_TEST(encryption_connect_pem) {
     UA_Array_delete(endpointArray, endpointArraySize,
                     &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION]);
 
-    /* TODO test trustList Load revocationList is not supported now
+    /* Revocation lists are supported, but not used here
     if(argc > MIN_ARGS) {
         trustListSize = (size_t)argc-MIN_ARGS;
         retval = UA_ByteString_allocBuffer(trustList, trustListSize);
@@ -239,6 +269,23 @@ START_TEST(encryption_connect_pem) {
                                          revocationList, revocationListSize);
     cc->certificateVerification.clear(&cc->certificateVerification);
     UA_CertificateVerification_AcceptAll(&cc->certificateVerification);
+
+    /* Manually add the Basic256 SecurityPolicy.
+     * It does not get added by default as it is considered unsecure. */
+    cc->securityPolicies = (UA_SecurityPolicy *)
+        UA_realloc(cc->securityPolicies, sizeof(UA_SecurityPolicy) *
+                   (cc->securityPoliciesSize + 1));
+    UA_SecurityPolicy_Basic256(&cc->securityPolicies[cc->securityPoliciesSize],
+                               certificate, privateKey, cc->logging);
+    cc->securityPoliciesSize++;
+
+    cc->authSecurityPolicies = (UA_SecurityPolicy *)
+        UA_realloc(cc->authSecurityPolicies, sizeof(UA_SecurityPolicy) *
+                   (cc->authSecurityPoliciesSize + 1));
+    UA_SecurityPolicy_Basic256(&cc->authSecurityPolicies[cc->authSecurityPoliciesSize],
+                                    certificate, privateKey, cc->logging);
+    cc->authSecurityPoliciesSize++;
+
     cc->securityPolicyUri =
         UA_STRING_ALLOC("http://opcfoundation.org/UA/SecurityPolicy#Basic256");
     ck_assert(client != NULL);
