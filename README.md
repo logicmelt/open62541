@@ -172,6 +172,59 @@ Therefore you have three options to install and use this stack:
    
 - Clone this repository and initialize all the submodules using `git submodule update --init --recursive`. Then either use `make install` or setup your CMake project correspondingly.
 
+## Conan packaging (Logicmelt fork)
+
+This fork ships a Conan 2 recipe as `open62541-logicmelt`. The package name differs from
+upstream's deliberately: a version label alone is not enough for Conan or CMake to tell a
+Logicmelt build apart from a stock open62541.
+
+For installing and setting up Conan, see the [Dependency management](https://github.com/logicmelt/welcome-guide/blob/master/development/languages/cpp.md#dependency-management)
+section of the welcome guide.
+
+### Using it as a dependency
+
+Require it, and use upstream's CMake names as normal — the recipe maps them back:
+
+```python
+def requirements(self):
+    self.requires("open62541-logicmelt/[>=1.3.6 <1.4.0]", transitive_headers=True)
+```
+
+```cmake
+find_package(open62541 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE open62541::open62541)
+```
+
+The range excludes pre-releases, so it resolves only to a build made from the `logicmelt-master`
+branch. A build from any other branch is versioned `1.3.6-branch.<slug>.<count>` and must
+be pinned exactly to be used.
+
+### Putting the package in your Conan cache
+
+To make the library available to another project on the same machine:
+
+```shell
+conan create . --build=missing
+```
+
+This builds the library, packages it, and runs `test_package` to confirm the result is
+consumable. Note that `conan install` does **not** do this — it resolves a recipe's
+dependencies and prepares a local build tree, so it never adds this package to the cache.
+
+### Working on the library itself
+
+```shell
+conan install . --build=missing
+conan build .
+```
+
+**Requires Python 3** on `PATH` — open62541's build generates its type, nodeset and
+statuscode sources at configure time.
+
+The recipe exposes only `shared` and `fPIC`; every `UA_*` feature flag is pinned in
+`conanfile.py::generate` and passed to CMake as preset cache variables. Change them there —
+a hand-passed `-DUA_...` is overwritten the next time Conan regenerates.
+
 ## Examples
 
 A complete list of examples can be found in the [examples directory](https://github.com/open62541/open62541/tree/master/examples).
