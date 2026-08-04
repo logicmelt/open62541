@@ -174,9 +174,12 @@ Therefore you have three options to install and use this stack:
 
 ## Conan packaging (Logicmelt fork)
 
-This fork ships a Conan 2 recipe as `open62541-logicmelt`. The package name differs from
-upstream's deliberately: a version label alone is not enough for Conan or CMake to tell a
-Logicmelt build apart from a stock open62541.
+This fork ships a Conan 2 recipe as `open62541-logicmelt`. The name and the version carry
+different information. The **name** says whose open62541 this is — keeping it distinct means
+this fork can never resolve in place of conancenter's through remote ordering or cache state,
+and `provides = "open62541"` makes a graph containing both fail rather than link two
+`libopen62541`. The **version** says which fork revision: `<upstream>.<Logicmelt revision>`,
+e.g. `1.3.6.2`, read from `OPEN62541_VER_*` and `LOGICMELT_VER_REVISION` in `CMakeLists.txt`.
 
 For installing and setting up Conan, see the [Dependency management](https://github.com/logicmelt/welcome-guide/blob/master/development/languages/cpp.md#dependency-management)
 section of the welcome guide.
@@ -195,9 +198,26 @@ find_package(open62541 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE open62541::open62541)
 ```
 
-The range excludes pre-releases, so it resolves only to a build made from the `logicmelt-master`
-branch. A build from any other branch is versioned `1.3.6-branch.<slug>.<count>` and must
-be pinned exactly to be used.
+### Version scheme
+
+The package version is the upstream version with the fork revision appended, so the tag
+`v<upstream>-logicmelt<rev>` becomes the version `<upstream>.<rev>`. Both numbers come from
+`OPEN62541_VER_*` and `LOGICMELT_VER_REVISION` in `CMakeLists.txt`.
+
+Builds from `logicmelt-master` or from a release tag get that version as-is. Every other
+build — feature branches, `release/*`, detached HEAD — gets a pre-release suffix, and version
+ranges skip pre-releases by default. So a range only ever resolves to a release build; to
+depend on anything else, pin the exact string `conan inspect .` reports.
+
+Because the revision is part of the version, a consumer can require a specific fork revision
+as a floor rather than just "some 1.3.x": `open62541-logicmelt/[>=<upstream>.<rev> <next>]`.
+
+**Releasing a new revision:** bump `LOGICMELT_VER_REVISION` in `CMakeLists.txt`, then tag that
+same commit `v<upstream>-logicmelt<rev>` — for example, set it to `3` and tag
+`v1.3.6-logicmelt3`. The tag and `CMakeLists.txt` must agree or `set_version` fails, so a
+forgotten bump is caught rather than shipped. When rebasing the fork onto a new upstream
+version, reset the revision to `1`: a higher upstream always sorts above a lower one, so
+`1.3.7.1` is still newer than `1.3.6.9`.
 
 ### Putting the package in your Conan cache
 
@@ -221,9 +241,12 @@ conan build .
 **Requires Python 3** on `PATH` — open62541's build generates its type, nodeset and
 statuscode sources at configure time.
 
-The recipe exposes only `shared` and `fPIC`; every `UA_*` feature flag is pinned in
-`conanfile.py::generate` and passed to CMake as preset cache variables. Change them there —
-a hand-passed `-DUA_...` is overwritten the next time Conan regenerates.
+The recipe exposes only `shared` and `fPIC`. The `UA_*` flags that define this package's
+feature set are pinned in `conanfile.py::generate` and passed as preset cache variables —
+change them there, since a hand-passed `-DUA_...` is overwritten the next time Conan
+regenerates. Flags *not* pinned, and therefore left at upstream defaults:
+`UA_ENABLE_ENCRYPTION`, `UA_MULTITHREADING`, `UA_LOGLEVEL`, `UA_ENABLE_IMMUTABLE_NODES`,
+`UA_ENABLE_MALLOC_SINGLETON`.
 
 ## Examples
 

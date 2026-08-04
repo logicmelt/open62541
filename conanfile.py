@@ -10,9 +10,12 @@ from conan.tools.files import copy, load, rmdir
 
 class Open62541LogicmeltConan(ConanFile):
     # The CMake project is named "open62541"; the package is deliberately named
-    # differently so it can never be confused with conancenter's open62541.
+    # differently so this fork can never resolve in place of conancenter's open62541.
     # package_info() maps the CMake identity back, so consumers are unaffected.
     name = "open62541-logicmelt"
+    # Fail the graph if conancenter's open62541 is pulled in too, rather than
+    # silently linking two libopen62541 with identical headers.
+    provides = "open62541"
     package_type = "library"
 
     license = "MPL-2.0"
@@ -52,20 +55,23 @@ class Open62541LogicmeltConan(ConanFile):
         return load(self, Path(self.recipe_folder) / "CMakeLists.txt")
 
     def set_version(self):
-        # Base version comes from OPEN62541_VER_MAJOR/MINOR/PATCH. Upstream's
-        # project() call carries no VERSION, so the template's regex does not
-        # apply here.
+        # <upstream MAJOR.MINOR.PATCH>.<Logicmelt revision>, e.g. 1.3.6.2. The 4th
+        # component sorts above a bare 1.3.6 and stays inside [>=1.3.6 <1.4.0], so
+        # fork revisions are pinnable; a pre-release suffix would sort below it and
+        # be excluded from ranges. Upstream's project() carries no VERSION, so the
+        # template's regex does not apply here.
         cmake_content = self._load_cmakelists()
 
         parts = []
-        for component in ("MAJOR", "MINOR", "PATCH"):
-            match = re.search(
-                rf"set\(OPEN62541_VER_{component}\s+([0-9]+)\)", cmake_content
-            )
+        for variable in (
+            "OPEN62541_VER_MAJOR",
+            "OPEN62541_VER_MINOR",
+            "OPEN62541_VER_PATCH",
+            "LOGICMELT_VER_REVISION",
+        ):
+            match = re.search(rf"set\({variable}\s+([0-9]+)\)", cmake_content)
             if not match:
-                raise ConanException(
-                    f"Cannot extract OPEN62541_VER_{component} from CMakeLists.txt"
-                )
+                raise ConanException(f"Cannot extract {variable} from CMakeLists.txt")
             parts.append(match.group(1))
         base_version = ".".join(parts)
 
@@ -86,20 +92,31 @@ class Open62541LogicmeltConan(ConanFile):
             self.version = base_version
             return
 
+        # Release tags are v<MAJOR>.<MINOR>.<PATCH>-logicmelt<REV>, e.g. v1.3.6-logicmelt2.
+        # The "-logicmelt" infix is what excludes upstream's own tags, which are
+        # v-prefixed too (v1.3.6, and 4-component ones like v1.3.3.1).
         try:
-            tag = git(
-                "describe", "--tags", "--exact-match", "--match", "[0-9]*.[0-9]*.[0-9]*"
-            )
+            tag = git("describe", "--tags", "--exact-match", "--match", "v*-logicmelt*")
         except subprocess.CalledProcessError:
             tag = None
 
         if tag is not None:
-            # A release tag must match the version in CMakeLists.txt. A mismatch
-            # means a forgotten version bump, so the build should fail.
-            if tag != base_version:
+            # A release tag must agree with CMakeLists.txt. A mismatch means a
+            # forgotten LOGICMELT_VER_REVISION bump, so the build should fail.
+            tag_match = re.fullmatch(
+                r"v([0-9]+\.[0-9]+\.[0-9]+)-logicmelt([0-9]+)", tag
+            )
+            if not tag_match:
                 raise ConanException(
-                    f"Release tag '{tag}' does not match OPEN62541_VER_* "
-                    f"'{base_version}' in CMakeLists.txt."
+                    f"Release tag '{tag}' is not of the form "
+                    f"v<MAJOR>.<MINOR>.<PATCH>-logicmelt<REV>."
+                )
+            tag_version = f"{tag_match.group(1)}.{tag_match.group(2)}"
+            if tag_version != base_version:
+                raise ConanException(
+                    f"Release tag '{tag}' implies version '{tag_version}', which does "
+                    f"not match OPEN62541_VER_*/LOGICMELT_VER_REVISION '{base_version}' "
+                    f"in CMakeLists.txt."
                 )
             self.version = base_version
         elif branch == "logicmelt-master":
@@ -180,7 +197,9 @@ class Open62541LogicmeltConan(ConanFile):
         # CMake still installs that directory unconditionally, with no option to
         # skip it, so cmake.install() would fail on the missing path.
         # An empty directory is enough to satisfy it.
-        Path(self.source_folder, "deps", "ua-nodeset").mkdir(parents=True, exist_ok=True)
+        Path(self.source_folder, "deps", "ua-nodeset").mkdir(
+            parents=True, exist_ok=True
+        )
 
         cmake = CMake(self)
         cmake.configure()
@@ -190,8 +209,12 @@ class Open62541LogicmeltConan(ConanFile):
         cmake = CMake(self)
         cmake.install()
         # The recipe declares license = "MPL-2.0"; ship the licence texts.
-        copy(self, "LICENSE*", src=self.source_folder,
-             dst=str(Path(self.package_folder) / "licenses"))
+        copy(
+            self,
+            "LICENSE*",
+            src=self.source_folder,
+            dst=str(Path(self.package_folder) / "licenses"),
+        )
         # Consumers get their CMake config and pkg-config from Conan, so the ones
         # open62541 installs here are never read.
         rmdir(self, str(Path(self.package_folder) / "lib" / "cmake"))
