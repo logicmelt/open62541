@@ -46,7 +46,7 @@ set(OPEN62541_VER_MINOR 3)
 set(OPEN62541_VER_PATCH 6)
 # Fork revision on top of upstream 1.3.6, read by conanfile.py as the 4th Conan
 # version component. Keep it a bare integer; reset to 1 on an upstream bump.
-set(LOGICMELT_VER_REVISION 2)
+set(LOGICMELT_VER_REVISION 3)
 set(OPEN62541_VER_LABEL "-logicmelt${LOGICMELT_VER_REVISION}") # like "-rc1" or "-g4538abcd" or "-g4538abcd-dirty"
 set(OPEN62541_VER_COMMIT "unknown-commit")
 
