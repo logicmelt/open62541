@@ -19,7 +19,7 @@ class Open62541LogicmeltConan(ConanFile):
     package_type = "library"
 
     license = "MPL-2.0"
-    author = "Logicmelt <info@logicmelt.com>"
+    author = "Carlos Castellano J. <carlos.castellano@logicmelt.com>"
     url = "https://github.com/logicmelt/open62541"
     description = (
         "Logicmelt fork of open62541 with optimized subscription "
