@@ -90,3 +90,11 @@ Pipfile.lock
 
 # project local vim settings
 .vim/
+
+# Conan
+CMakeUserPresets.json
+
+# cmake_layout() writes out-of-source build trees wherever a recipe lives, e.g.
+# test_package/build/. The /build rule above is anchored to the repo root and
+# does not cover those, so ignore build/ at any depth.
+build/

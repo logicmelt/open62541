@@ -172,6 +172,87 @@ Therefore you have three options to install and use this stack:
    
 - Clone this repository and initialize all the submodules using `git submodule update --init --recursive`. Then either use `make install` or setup your CMake project correspondingly.
 
+## Conan packaging (Logicmelt fork)
+
+This fork ships a Conan 2 recipe as `open62541-logicmelt`. The name and the version carry
+different information. The **name** says whose open62541 this is — keeping it distinct means
+this fork can never resolve in place of conancenter's through remote ordering or cache state,
+and `provides = "open62541"` makes a graph containing both fail rather than link two
+`libopen62541`. The **version** says which fork revision: `<upstream>.<Logicmelt revision>`,
+e.g. `1.3.6.2`, read from `OPEN62541_VER_*` and `LOGICMELT_VER_REVISION` in `CMakeLists.txt`.
+
+For installing and setting up Conan, see the [Dependency management](https://github.com/logicmelt/welcome-guide/blob/master/development/languages/cpp.md#dependency-management)
+section of the welcome guide.
+
+### Using it as a dependency
+
+Require it, and use upstream's CMake names as normal — the recipe maps them back:
+
+```python
+def requirements(self):
+    self.requires("open62541-logicmelt/[>=1.3.6 <1.4.0]", transitive_headers=True)
+```
+
+```cmake
+find_package(open62541 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE open62541::open62541)
+```
+
+### Version scheme
+
+The package version is the upstream version with the fork revision appended, so the tag
+`v<upstream>-logicmelt<rev>` becomes the version `<upstream>.<rev>`. Both numbers come from
+`OPEN62541_VER_*` and `LOGICMELT_VER_REVISION` in `CMakeLists.txt`.
+
+Only a build from a release tag gets that version as-is. Every other build — feature
+branches, `release/*`, detached HEAD — gets a pre-release suffix, and version ranges skip
+pre-releases by default. So a range only ever resolves to a release build; to depend on
+anything else, pin the exact string `conan inspect .` reports.
+
+Building from `logicmelt-master` with no tag on HEAD is an error, not a version — the
+reminder to tag the release. The clean version belongs to exactly one commit; if untagged
+commits on the release branch claimed it too, a consumer pinning that version would
+silently get whichever content is newest.
+
+Because the revision is part of the version, a consumer can require a specific fork revision
+as a floor rather than just "some 1.3.x": `open62541-logicmelt/[>=<upstream>.<rev> <next>]`.
+
+**Releasing a new revision:** bump `LOGICMELT_VER_REVISION` in `CMakeLists.txt`, then tag that
+same commit `v<upstream>-logicmelt<rev>` — for example, set it to `3` and tag
+`v1.3.6-logicmelt3`. The tag and `CMakeLists.txt` must agree or `set_version` fails, so a
+forgotten bump is caught rather than shipped. When rebasing the fork onto a new upstream
+version, reset the revision to `1`: a higher upstream always sorts above a lower one, so
+`1.3.7.1` is still newer than `1.3.6.9`.
+
+### Putting the package in your Conan cache
+
+To make the library available to another project on the same machine:
+
+```shell
+conan create . --build=missing
+```
+
+This builds the library, packages it, and runs `test_package` to confirm the result is
+consumable. Note that `conan install` does **not** do this — it resolves a recipe's
+dependencies and prepares a local build tree, so it never adds this package to the cache.
+
+### Working on the library itself
+
+```shell
+conan install . --build=missing
+conan build .
+```
+
+**Requires Python 3** on `PATH` — open62541's build generates its type, nodeset and
+statuscode sources at configure time.
+
+The recipe exposes only `shared` and `fPIC`. The `UA_*` flags that define this package's
+feature set are pinned in `conanfile.py::generate` and passed as preset cache variables —
+change them there, since a hand-passed `-DUA_...` is overwritten the next time Conan
+regenerates. Flags *not* pinned, and therefore left at upstream defaults:
+`UA_ENABLE_ENCRYPTION`, `UA_MULTITHREADING`, `UA_LOGLEVEL`, `UA_ENABLE_IMMUTABLE_NODES`,
+`UA_ENABLE_MALLOC_SINGLETON`.
+
 ## Examples
 
 A complete list of examples can be found in the [examples directory](https://github.com/open62541/open62541/tree/master/examples).
