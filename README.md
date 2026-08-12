@@ -204,10 +204,15 @@ The package version is the upstream version with the fork revision appended, so 
 `v<upstream>-logicmelt<rev>` becomes the version `<upstream>.<rev>`. Both numbers come from
 `OPEN62541_VER_*` and `LOGICMELT_VER_REVISION` in `CMakeLists.txt`.
 
-Builds from `logicmelt-master` or from a release tag get that version as-is. Every other
-build — feature branches, `release/*`, detached HEAD — gets a pre-release suffix, and version
-ranges skip pre-releases by default. So a range only ever resolves to a release build; to
-depend on anything else, pin the exact string `conan inspect .` reports.
+Only a build from a release tag gets that version as-is. Every other build — feature
+branches, `release/*`, detached HEAD — gets a pre-release suffix, and version ranges skip
+pre-releases by default. So a range only ever resolves to a release build; to depend on
+anything else, pin the exact string `conan inspect .` reports.
+
+Building from `logicmelt-master` with no tag on HEAD is an error, not a version — the
+reminder to tag the release. The clean version belongs to exactly one commit; if untagged
+commits on the release branch claimed it too, a consumer pinning that version would
+silently get whichever content is newest.
 
 Because the revision is part of the version, a consumer can require a specific fork revision
 as a floor rather than just "some 1.3.x": `open62541-logicmelt/[>=<upstream>.<rev> <next>]`.

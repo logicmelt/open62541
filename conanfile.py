@@ -123,7 +123,16 @@ class Open62541LogicmeltConan(ConanFile):
             # The fork's release branch, equivalent to master elsewhere. This
             # repo's own master tracks upstream open62541, so master is
             # deliberately NOT the release branch.
-            self.version = base_version
+            #
+            # The clean version belongs to the tagged commit alone — untagged
+            # commits here would give one version two contents.
+            raise ConanException(
+                f"HEAD is on 'logicmelt-master' with no v*-logicmelt* tag, so the "
+                f"release version '{base_version}' cannot be claimed. Tag this "
+                f"commit 'v{'.'.join(parts[:3])}-logicmelt{parts[3]}' to release it "
+                f"(bump LOGICMELT_VER_REVISION in CMakeLists.txt first if that tag "
+                f"already exists), or build from a branch."
+            )
         elif branch.startswith("release/"):
             self.version = f"{base_version}-rc.{count}"
         else:
